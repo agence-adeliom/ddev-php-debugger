@@ -1,0 +1,60 @@
+#ddev-generated
+# Dockerfile to replace xdebug.so with php-debugger at build time.
+# php-debugger is a lightweight fork of Xdebug (step-debug only, ~4% overhead).
+# This piggybacks on DDEV's built-in `ddev xdebug on/off` mechanism.
+
+ARG BASE_IMAGE
+FROM $BASE_IMAGE
+
+RUN set -eu; \
+    PHP_MAJOR=$(php -r 'echo PHP_MAJOR_VERSION;'); \
+    PHP_MINOR=$(php -r 'echo PHP_MINOR_VERSION;'); \
+    echo "Detected PHP ${PHP_MAJOR}.${PHP_MINOR}"; \
+    \
+    # Version guard: php-debugger requires PHP 8.2+ \
+    if [ "$PHP_MAJOR" -lt 8 ] || { [ "$PHP_MAJOR" -eq 8 ] && [ "$PHP_MINOR" -lt 2 ]; }; then \
+        echo "ERROR: php-debugger requires PHP 8.2 or later (detected ${PHP_MAJOR}.${PHP_MINOR})." >&2; \
+        exit 1; \
+    fi; \
+    \
+    # Locate the current xdebug.so for the active PHP version \
+    PHP_EXT_DIR=$(php -r 'echo ini_get("extension_dir");'); \
+    XDEBUG_SO="${PHP_EXT_DIR}/xdebug.so"; \
+    if [ ! -f "$XDEBUG_SO" ]; then \
+        echo "ERROR: Could not find xdebug.so at ${XDEBUG_SO}. Is Xdebug installed?" >&2; \
+        exit 1; \
+    fi; \
+    echo "Found xdebug.so at ${XDEBUG_SO}"; \
+    \
+    # Detect architecture \
+    ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m); \
+    echo "Architecture: ${ARCH}"; \
+    \
+    if [ "$ARCH" = "amd64" ] || [ "$ARCH" = "x86_64" ]; then \
+        # Download pre-built binary for amd64 \
+        DOWNLOAD_URL="https://github.com/pronskiy/php-debugger/releases/download/v0.1.0-rc1/php-debugger-php${PHP_MAJOR}${PHP_MINOR}-ubuntu-x86_64.so"; \
+        echo "Downloading ${DOWNLOAD_URL}"; \
+        curl -fsSL -o /tmp/php-debugger.so "$DOWNLOAD_URL"; \
+    else \
+        # Build from source for arm64/other architectures \
+        echo "No pre-built binary for ${ARCH}, building from source..."; \
+        apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+            php${PHP_MAJOR}.${PHP_MINOR}-dev autoconf automake gcc make git > /dev/null 2>&1; \
+        git clone --depth 1 --branch 0.1.0-rc1 https://github.com/pronskiy/php-debugger.git /tmp/php-debugger-src; \
+        cd /tmp/php-debugger-src; \
+        phpize; \
+        ./configure --enable-php-debugger; \
+        make -j"$(nproc)"; \
+        cp modules/php_debugger.so /tmp/php-debugger.so; \
+        cd /; \
+        rm -rf /tmp/php-debugger-src; \
+        apt-get purge -y -qq php${PHP_MAJOR}.${PHP_MINOR}-dev autoconf automake gcc make git > /dev/null 2>&1 || true; \
+        apt-get autoremove -y -qq > /dev/null 2>&1 || true; \
+        rm -rf /var/lib/apt/lists/*; \
+    fi; \
+    \
+    # Backup original and replace \
+    cp "$XDEBUG_SO" "${XDEBUG_SO}.original"; \
+    mv /tmp/php-debugger.so "$XDEBUG_SO"; \
+    chmod 644 "$XDEBUG_SO"; \
+    echo "php-debugger installed successfully (original backed up to ${XDEBUG_SO}.original)"

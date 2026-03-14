@@ -1,0 +1,11 @@
+name: php-debugger
+
+ddev_version_constraint: '>= v1.23.5'
+
+project_files:
+  - web-build/Dockerfile.php-debugger
+  - php/php-debugger.ini
+
+removal_actions:
+  - rm -f web-build/Dockerfile.php-debugger
+  - rm -f php/php-debugger.ini
