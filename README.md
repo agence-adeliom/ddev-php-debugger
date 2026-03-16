@@ -1,3 +1,5 @@
+![Adeliom](./adeliom.jpg)
+
 # ddev-php-debugger
 
 A DDEV addon that replaces Xdebug with [php-debugger](https://github.com/pronskiy/php-debugger) — a lightweight fork focused on step-debugging only.
@@ -6,7 +8,7 @@ Xdebug adds ~324% overhead even when loaded but inactive. php-debugger strips pr
 
 ## Requirements
 
-- DDEV >= v1.24.0
+- DDEV >= v1.23.5
 - PHP 8.2 or later
 - Any architecture: pre-built binaries for amd64, compiles from source on arm64 (Apple Silicon)
 
