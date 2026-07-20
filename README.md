@@ -15,7 +15,7 @@ Xdebug adds ~324% overhead even when loaded but inactive. php-debugger strips pr
 ## Install
 
 ```bash
-ddev add-on get jeandavid/ddev-php-debugger
+ddev add-on get agence-adeliom/ddev-php-debugger
 ddev restart
 ```
 
