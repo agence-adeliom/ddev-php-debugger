@@ -26,35 +26,35 @@ RUN set -eu; \
     fi; \
     echo "Found xdebug.so at ${XDEBUG_SO}"; \
     \
-    # Detect architecture \
-    ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m); \
+    # Detect architecture (DDEV web images are always Linux, NTS PHP builds) \
+    case "$(dpkg --print-architecture 2>/dev/null || uname -m)" in \
+        amd64|x86_64) ARCH=x86_64 ;; \
+        arm64|aarch64) ARCH=arm64 ;; \
+        *) echo "ERROR: Unsupported architecture $(uname -m)." >&2; exit 1 ;; \
+    esac; \
     echo "Architecture: ${ARCH}"; \
     \
+    # Resolve the latest release tag from GitHub API \
+    RELEASE_TAG=$(curl -fsSL "https://api.github.com/repos/php-debugger/php-debugger/releases/latest" \
+        | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'); \
+    echo "Latest php-debugger release: ${RELEASE_TAG}"; \
+    \
+    # Try to download the pre-built binary (available for linux/amd64 and linux/arm64, NTS) \
+    DOWNLOAD_URL="https://github.com/php-debugger/php-debugger/releases/download/${RELEASE_TAG}/php-debugger-php${PHP_MAJOR}.${PHP_MINOR}-nts-linux-${ARCH}.so"; \
+    echo "Trying pre-built binary: ${DOWNLOAD_URL}"; \
     DOWNLOADED=0; \
-    if [ "$ARCH" = "amd64" ] || [ "$ARCH" = "x86_64" ]; then \
-        # Resolve the latest release tag from GitHub API \
-        RELEASE_TAG=$(curl -fsSL "https://api.github.com/repos/pronskiy/php-debugger/releases/latest" \
-            | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'); \
-        echo "Latest php-debugger release: ${RELEASE_TAG}"; \
-        # Try to download pre-built binary for amd64 \
-        DOWNLOAD_URL="https://github.com/pronskiy/php-debugger/releases/download/${RELEASE_TAG}/php-debugger-php${PHP_MAJOR}.${PHP_MINOR}-ubuntu-x86_64.so"; \
-        echo "Trying pre-built binary: ${DOWNLOAD_URL}"; \
-        if curl -fsSL -o /tmp/php-debugger.so "$DOWNLOAD_URL" 2>/dev/null; then \
-            DOWNLOADED=1; \
-            echo "Pre-built binary downloaded successfully."; \
-        else \
-            echo "Pre-built binary not available for PHP ${PHP_MAJOR}.${PHP_MINOR} on ${ARCH}, falling back to source build..."; \
-        fi; \
+    if curl -fsSL -o /tmp/php-debugger.so "$DOWNLOAD_URL" 2>/dev/null; then \
+        DOWNLOADED=1; \
+        echo "Pre-built binary downloaded successfully."; \
+    else \
+        echo "Pre-built binary not available for PHP ${PHP_MAJOR}.${PHP_MINOR} on ${ARCH}, falling back to source build..."; \
     fi; \
     if [ "$DOWNLOADED" = "0" ]; then \
-        # Build from source for arm64/other architectures or when pre-built binary is unavailable \
+        # Build from source when no pre-built binary matches this PHP version/architecture \
         echo "Building from source..."; \
-        RELEASE_TAG=$(curl -fsSL "https://api.github.com/repos/pronskiy/php-debugger/releases/latest" \
-            | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'); \
-        echo "Latest php-debugger release: ${RELEASE_TAG}"; \
         apt-get update -qq && apt-get install -y -qq --no-install-recommends \
             php${PHP_MAJOR}.${PHP_MINOR}-dev autoconf automake gcc make git > /dev/null 2>&1; \
-        git clone --depth 1 --branch "${RELEASE_TAG}" https://github.com/pronskiy/php-debugger.git /tmp/php-debugger-src; \
+        git clone --depth 1 --branch "${RELEASE_TAG}" https://github.com/php-debugger/php-debugger.git /tmp/php-debugger-src; \
         cd /tmp/php-debugger-src; \
         phpize; \
         ./configure --enable-php-debugger; \
