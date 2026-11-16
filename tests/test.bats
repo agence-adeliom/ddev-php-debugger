@@ -31,11 +31,11 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"PHP Debugger"* ]]
 
-  # extension_loaded('xdebug') should return true (drop-in compatible)
-  run ddev exec php -r 'echo extension_loaded("xdebug") ? "LOADED" : "NOT_LOADED";'
+  # php-debugger registers itself as the "php_debugger" module
+  run ddev exec php -r 'echo extension_loaded("php_debugger") ? "LOADED" : "NOT_LOADED";'
   echo "Output: $output"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"LOADED"* ]]
+  [ "$output" = "LOADED" ]
 }
 
 @test "ddev xdebug off disables php-debugger" {
