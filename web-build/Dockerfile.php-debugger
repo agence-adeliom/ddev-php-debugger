@@ -72,3 +72,9 @@ RUN set -eu; \
     mv /tmp/php-debugger.so "$XDEBUG_SO"; \
     chmod 644 "$XDEBUG_SO"; \
     echo "php-debugger installed successfully (original backed up to ${XDEBUG_SO}.original)"
+
+# Recent DDEV versions check `php -m | grep -qx xdebug` in enable_xdebug.
+# php-debugger registers itself as "php_debugger", so accept both module names.
+RUN if [ -f /usr/local/bin/enable_xdebug ]; then \
+        sed -i 's/grep -qx xdebug/grep -qxE "xdebug|php_debugger"/' /usr/local/bin/enable_xdebug; \
+    fi
