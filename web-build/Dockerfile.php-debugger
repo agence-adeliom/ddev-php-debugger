@@ -11,9 +11,15 @@ FROM $BASE_IMAGE
 # upstream release, which invalidates the Docker build cache so users get the new binary.
 ARG PHP_DEBUGGER_VERSION=0.6.2
 
+# The image's default `php` is DDEV's newest PHP until the container starts and
+# switches to the project version, so target the project's PHP binary explicitly.
+ARG DDEV_PHP_VERSION
+
 RUN set -eu; \
-    PHP_MAJOR=$(php -r 'echo PHP_MAJOR_VERSION;'); \
-    PHP_MINOR=$(php -r 'echo PHP_MINOR_VERSION;'); \
+    PHP_BIN="php${DDEV_PHP_VERSION:-}"; \
+    command -v "$PHP_BIN" > /dev/null || PHP_BIN=php; \
+    PHP_MAJOR=$($PHP_BIN -r 'echo PHP_MAJOR_VERSION;'); \
+    PHP_MINOR=$($PHP_BIN -r 'echo PHP_MINOR_VERSION;'); \
     echo "Detected PHP ${PHP_MAJOR}.${PHP_MINOR}"; \
     \
     # Version guard: php-debugger requires PHP 8.2+ \
@@ -23,7 +29,7 @@ RUN set -eu; \
     fi; \
     \
     # Locate the current xdebug.so for the active PHP version \
-    PHP_EXT_DIR=$(php -r 'echo ini_get("extension_dir");'); \
+    PHP_EXT_DIR=$($PHP_BIN -r 'echo ini_get("extension_dir");'); \
     XDEBUG_SO="${PHP_EXT_DIR}/xdebug.so"; \
     if [ ! -f "$XDEBUG_SO" ]; then \
         echo "ERROR: Could not find xdebug.so at ${XDEBUG_SO}. Is Xdebug installed?" >&2; \

@@ -7,7 +7,7 @@ setup() {
   export DDEV_NON_INTERACTIVE=true
 
   cd "$TESTDIR"
-  ddev config --project-name="$PROJNAME" --project-type=php --php-version=8.4
+  ddev config --project-name="$PROJNAME" --project-type=php --php-version=8.2
   ddev start -y
 }
 
