@@ -59,20 +59,29 @@ RUN set -eu; \
         echo "Pre-built binary not available for PHP ${PHP_MAJOR}.${PHP_MINOR} on ${ARCH}, falling back to source build..."; \
     fi; \
     if [ "$DOWNLOADED" = "0" ]; then \
-        # Build from source when no pre-built binary matches this PHP version/architecture \
+        # Build from source when no pre-built binary matches this PHP version/architecture. \
+        # Record the installed packages first, so the cleanup only removes what the build added \
+        # (git, make... may already be in the web image and must stay). \
         echo "Building from source..."; \
-        apt-get update -qq && apt-get install -y -qq --no-install-recommends \
-            php${PHP_MAJOR}.${PHP_MINOR}-dev autoconf automake gcc make git > /dev/null 2>&1; \
+        PHP_VER="${PHP_MAJOR}.${PHP_MINOR}"; \
+        dpkg-query -W -f='${Package}\n' | sort > /tmp/packages-before; \
+        apt-get update -qq; \
+        apt-get install -y -qq --no-install-recommends \
+            "php${PHP_VER}-dev" autoconf automake gcc make git > /dev/null; \
+        dpkg-query -W -f='${Package}\n' | sort > /tmp/packages-after; \
+        BUILD_ONLY_PACKAGES=$(comm -13 /tmp/packages-before /tmp/packages-after | tr '\n' ' '); \
         git clone --depth 1 --branch "${RELEASE_TAG}" https://github.com/php-debugger/php-debugger.git /tmp/php-debugger-src; \
         cd /tmp/php-debugger-src; \
-        phpize; \
-        ./configure --enable-php-debugger; \
+        "phpize${PHP_VER}"; \
+        ./configure --enable-php-debugger --with-php-config="php-config${PHP_VER}"; \
         make -j"$(nproc)"; \
         cp modules/php_debugger.so /tmp/php-debugger.so; \
         cd /; \
-        rm -rf /tmp/php-debugger-src; \
-        apt-get purge -y -qq php${PHP_MAJOR}.${PHP_MINOR}-dev autoconf automake gcc make git > /dev/null 2>&1 || true; \
-        apt-get autoremove -y -qq > /dev/null 2>&1 || true; \
+        rm -rf /tmp/php-debugger-src /tmp/packages-before /tmp/packages-after; \
+        if [ -n "$BUILD_ONLY_PACKAGES" ]; then \
+            echo "Removing build-only packages: ${BUILD_ONLY_PACKAGES}"; \
+            apt-get purge -y -qq $BUILD_ONLY_PACKAGES > /dev/null; \
+        fi; \
         rm -rf /var/lib/apt/lists/*; \
     fi; \
     \
