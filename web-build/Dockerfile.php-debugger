@@ -6,6 +6,11 @@
 ARG BASE_IMAGE
 FROM $BASE_IMAGE
 
+# Pinned php-debugger release, bumped automatically by .github/workflows/sync-upstream.yml.
+# Pinning (instead of resolving "latest" at build time) changes this file on every
+# upstream release, which invalidates the Docker build cache so users get the new binary.
+ARG PHP_DEBUGGER_VERSION=0.6.2
+
 RUN set -eu; \
     PHP_MAJOR=$(php -r 'echo PHP_MAJOR_VERSION;'); \
     PHP_MINOR=$(php -r 'echo PHP_MINOR_VERSION;'); \
@@ -34,14 +39,8 @@ RUN set -eu; \
     esac; \
     echo "Architecture: ${ARCH}"; \
     \
-    # Resolve the latest release tag by following the releases/latest redirect \
-    # (avoids the unauthenticated GitHub API rate limit, which returns 403 on shared CI runners) \
-    RELEASE_TAG=$(curl -fsSL --retry 3 -o /dev/null -w '%{url_effective}' \
-        "https://github.com/php-debugger/php-debugger/releases/latest" | sed 's#.*/tag/##'); \
-    case "$RELEASE_TAG" in \
-        ""|*/*) echo "ERROR: Could not resolve the latest php-debugger release tag." >&2; exit 1 ;; \
-    esac; \
-    echo "Latest php-debugger release: ${RELEASE_TAG}"; \
+    RELEASE_TAG="${PHP_DEBUGGER_VERSION}"; \
+    echo "php-debugger release: ${RELEASE_TAG}"; \
     \
     # Try to download the pre-built binary (available for linux/amd64 and linux/arm64, NTS) \
     DOWNLOAD_URL="https://github.com/php-debugger/php-debugger/releases/download/${RELEASE_TAG}/php-debugger-php${PHP_MAJOR}.${PHP_MINOR}-nts-linux-${ARCH}.so"; \

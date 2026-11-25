@@ -1,0 +1,124 @@
+name: sync-upstream
+
+# GitHub cannot trigger a workflow on another repository's release, so we poll
+# php-debugger/php-debugger. When a new upstream release appears, we pin it in the
+# Dockerfile on a temporary branch, run the add-on tests against it, then
+# fast-forward main and publish a matching add-on release with the same tag as upstream, which is what
+# `ddev add-on get agence-adeliom/ddev-php-debugger` downloads.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: php-debugger/php-debugger
+  DOCKERFILE: web-build/Dockerfile.php-debugger
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      upstream: ${{ steps.versions.outputs.upstream }}
+      needs_bump: ${{ steps.versions.outputs.needs_bump }}
+      needs_release: ${{ steps.versions.outputs.needs_release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          upstream=$(gh release view -R "$UPSTREAM_REPO" --json tagName -q .tagName)
+          pinned=$(sed -n 's/^ARG PHP_DEBUGGER_VERSION=//p' "$DOCKERFILE")
+          echo "Upstream: ${upstream} / pinned: ${pinned}"
+
+          needs_bump=false
+          [ "$upstream" != "$pinned" ] && needs_bump=true
+
+          needs_release=true
+          if gh release view "${upstream}" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            needs_release=false
+          fi
+
+          {
+            echo "upstream=${upstream}"
+            echo "needs_bump=${needs_bump}"
+            echo "needs_release=${needs_release}"
+          } >> "$GITHUB_OUTPUT"
+
+  prepare:
+    needs: check
+    if: needs.check.outputs.needs_release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.branch.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: branch
+        env:
+          UPSTREAM: ${{ needs.check.outputs.upstream }}
+          NEEDS_BUMP: ${{ needs.check.outputs.needs_bump }}
+        run: |
+          set -eu
+          if [ "$NEEDS_BUMP" != "true" ]; then
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          branch="sync/php-debugger-${UPSTREAM}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          sed -i "s/^ARG PHP_DEBUGGER_VERSION=.*/ARG PHP_DEBUGGER_VERSION=${UPSTREAM}/" "$DOCKERFILE"
+          git commit -am "chore: bump php-debugger to ${UPSTREAM}"
+          git push --force origin "$branch"
+          echo "ref=${branch}" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: prepare
+    strategy:
+      matrix:
+        ddev_version: [stable, HEAD]
+      fail-fast: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ddev/github-action-add-on-test@v2
+        with:
+          ddev_version: ${{ matrix.ddev_version }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          addon_repository: ${{ github.repository }}
+          addon_ref: ${{ needs.prepare.outputs.ref }}
+
+  release:
+    needs: [check, prepare, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM: ${{ needs.check.outputs.upstream }}
+          REF: ${{ needs.prepare.outputs.ref }}
+        run: |
+          set -eu
+          if [ "$REF" != "main" ]; then
+            # Fast-forward only: fails if main moved since the bump, rerun the workflow then.
+            git push origin "origin/${REF}:refs/heads/main"
+            git push origin --delete "$REF"
+          fi
+          git fetch origin main
+          gh release create "${UPSTREAM}" \
+            --target "$(git rev-parse origin/main)" \
+            --title "${UPSTREAM}" \
+            --notes "Uses php-debugger [${UPSTREAM}](https://github.com/${UPSTREAM_REPO}/releases/tag/${UPSTREAM})."

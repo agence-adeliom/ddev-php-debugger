@@ -36,7 +36,7 @@ ddev xdebug on
 
 # Verify
 ddev exec php -v
-# Shows: "with PHP Debugger v0.1.0"
+# Shows: "with PHP Debugger vX.Y.Z"
 
 # Disable
 ddev xdebug off
